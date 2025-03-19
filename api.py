@@ -33,7 +33,14 @@ def add_cors_headers(response):
 
 @app.route("/*", methods=["OPTIONS"])
 def handle_options():
-    return "", 204
+    response = app.make_default_options_response()
+    response.headers["Access-Control-Allow-Origin"] = (
+        "https://nexradmapbox.netlify.app/"
+    )
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 
 @app.route("/code/", methods=["GET"])
 def handle_code_get():
@@ -79,9 +86,7 @@ def handle_flag_post():
 
         if update_json_in_s3(object_key, body):
             return (
-                jsonify(
-                    {"updated": True, "message": f"'{object_key}' updated in S3!"}
-                ),
+                jsonify({"updated": True, "message": f"'{object_key}' updated in S3!"}),
                 200,
             )
         else:
@@ -189,5 +194,5 @@ def update_json_in_s3(object_key, new_data):
 
 
 # if __name__ == "__main__":
-    # port = int(os.environ.get("PORT", 4000))
-    # app.run(host="0.0.0.0", port=port, threaded=True, debug=True)
+# port = int(os.environ.get("PORT", 4000))
+# app.run(host="0.0.0.0", port=port, threaded=True, debug=True)
