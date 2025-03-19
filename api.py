@@ -10,7 +10,7 @@ from flask_cors import CORS
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins="http://localhost:3000")
+CORS(app, origins="https://nexradmapbox.netlify.app/")
 
 s3_client = boto3.client(
     "s3",
