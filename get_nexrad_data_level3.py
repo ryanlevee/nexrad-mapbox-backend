@@ -4,9 +4,9 @@ import json
 import os
 import re
 import shutil
-import sys
 from concurrent.futures import ProcessPoolExecutor
 from datetime import timedelta, timezone
+import sys
 from time import time
 
 import boto3
@@ -14,133 +14,171 @@ from boto3.s3.transfer import TransferConfig
 from botocore import UNSIGNED
 from botocore.client import Config
 from pytz import UTC
+
+from helpers import delete_old_s3_files
 from read_and_plot_nexrad_level3 import read_and_plot_nexrad_level3_data
 from utils import Utl
 
-RELATIVE_PATH = "./public/"
-ABSOLUTE_CODES_PATH = f"{os.path.abspath(RELATIVE_PATH)}/codes/options.json"
-ABSOLUTE_IMAGE_PATH = f"{os.path.abspath(RELATIVE_PATH)}/plots_level3/"
-ABSOLUTE_LIST_PATH = f"{os.path.abspath(RELATIVE_PATH)}/lists/"
-
+BUCKET_PATH_PLOTS = "plots_level3/"
+BUCKET_PATH_LISTS = "lists/"
+BUCKET_PATH_CODES = "codes/"
+BUCKET_FLAG_LISTS = "flags/"
+MY_BUCKET_NAME = "nexrad-mapbox"
+DOWNLOAD_FOLDER = "public/nexrad_level3_data"
 CHUNK_SIZE = 1024 * 1024 * 2
-
-
-def generate_file_list_json(plotted_files, products, radar_site):
-    filtered_file_list = {}
-
-    for product in products:
-        product_file_list = {}
-        product_type = product["type"]
-        print(f"Generating file list for nexrad_level3_{product_type}_files.json")
-        LIST_FILENAME = f"nexrad_level3_{product_type}_files.json"
-        with open(os.path.join(ABSOLUTE_LIST_PATH, LIST_FILENAME), "r") as f:
-            product_file_list = json.load(f)
-            f.close()
-
-        plotted_product_files = plotted_files[product_type]
-        plotted_product_files.sort()
-        latest_file_datetime = plotted_product_files[-1][4:19].replace("_", " ")
-        format_string = "%Y%m%d %H%M%S"
-        datetime_object = datetime.datetime.strptime(
-            latest_file_datetime, format_string
-        )
-        three_hours_ago = datetime_object - timedelta(minutes=180)
-
-        min_file_datetime = (
-            str(three_hours_ago).replace("-", "").replace(":", "").replace(" ", "_")
-        )
-
-        min_prefix = f"K{radar_site}{min_file_datetime}"  # add "K" for level3
-
-        filtered_product_list = {
-            k: v for k, v in product_file_list.items() if k >= min_prefix
-        }
-
-        for file in plotted_product_files:
-            if file >= min_prefix:
-                filtered_product_list.update({file: {"sweeps": 1}})
-
-        print(f"Removing old {product_type} pngs and jsons in {ABSOLUTE_IMAGE_PATH}")
-
-        with open(os.path.join(ABSOLUTE_LIST_PATH, LIST_FILENAME), "w+") as g:
-            json.dump(filtered_product_list, g)
-            g.close()
-
-        [filtered_file_list.update({k: v}) for k, v in filtered_product_list.items()]
-
-    print('filtered_file_list:', filtered_file_list)
-
-    for file in os.listdir(ABSOLUTE_IMAGE_PATH):
-        if file[:23] not in filtered_file_list:
-            os.unlink(os.path.join(ABSOLUTE_IMAGE_PATH, file))
-
-    print(f"nextrad_leevl3_{product_type}_files.json updated")
-
-    code_options = {}
-    with open(
-        ABSOLUTE_CODES_PATH,
-        "r",
-    ) as h:
-        code_options = json.load(h)
-        h.close()
-
-    for product in products:
-        product_type = product["type"]
-        print(f"Generating {product_type} code options for options.json")
-
-        product_codes = code_options[product_type]
-        jcodes = [jk[-3:] for jk in filtered_file_list]
-
-        for i, codes in enumerate(product_codes):
-            code = codes["value"]
-            product_codes[i]["count"] = jcodes.count(code)
-
-        code_options[product_type] = product_codes
-        print(f"updating options.json for {product_type}")
-
-    with open(
-        ABSOLUTE_CODES_PATH,
-        "w+",
-    ) as j:
-        json.dump(code_options, j)
-        j.close()
-
 
 TRANSFER_CONFIG = TransferConfig(max_concurrency=50)
 CONFIG = Config(signature_version=UNSIGNED, s3={"transfer_config": TRANSFER_CONFIG})
 SESSION = boto3.session.Session()
-S3_CLIENT = SESSION.client("s3", config=CONFIG, region_name="us-east-1")
-DOWNLOAD_FOLDER = "nexrad_level3_data"
+unidata_s3_client = SESSION.client("s3", config=CONFIG, region_name="us-east-1")
+
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION"),
+)
+
+
+def update_metadata(
+    plotted_product_files, product_type, radar_site, product_file_list, code_options
+):
+    filtered_file_list = {}
+
+    # print(plotted_files)
+
+    # for product in products:
+    # product_type = product["type"]
+
+    list_filename = f"nexrad_level3_{product_type}_files.json"
+    s3_list_key = BUCKET_PATH_LISTS + list_filename
+
+    # plotted_product_files = plotted_files[product_type]
+
+    plotted_product_files.sort()
+    latest_file_datetime = plotted_product_files[-1][4:19].replace("_", " ")
+    format_string = "%Y%m%d %H%M%S"
+    datetime_object = datetime.datetime.strptime(latest_file_datetime, format_string)
+    three_hours_ago = datetime_object - timedelta(minutes=180)
+
+    min_file_datetime = (
+        str(three_hours_ago).replace("-", "").replace(":", "").replace(" ", "_")
+    )
+
+    min_prefix = f"K{radar_site}{min_file_datetime}"
+
+    filtered_product_list = {
+        k: v for k, v in product_file_list.items() if k >= min_prefix
+    }
+
+    for file in plotted_product_files:
+        if file >= min_prefix:
+            filtered_product_list.update({file: {"sweeps": 1}})
+
+    json_list_string = json.dumps(filtered_product_list)
+    json_list_bytes = json_list_string.encode("utf-8")
+    try:
+        response = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_list_key,
+            Body=json_list_bytes,
+            ContentType="application/json",
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Updated s3://{MY_BUCKET_NAME}/{s3_list_key}")
+        else:
+            print(
+                f"Failed to update s3://{MY_BUCKET_NAME}/{s3_list_key}. Response: {response}"
+            )
+    except Exception as e:
+        print(f"Error writing file list to S3: {e}")
+
+    [filtered_file_list.update({k: v}) for k, v in filtered_product_list.items()]
+
+    flags_filename = "update_flags.json"
+    s3_flags_key = BUCKET_FLAG_LISTS + flags_filename
+
+    try:
+        response = s3_client.get_object(Bucket=MY_BUCKET_NAME, Key=s3_flags_key)
+        flag_file = json.loads(response["Body"].read().decode("utf-8"))
+    except s3_client.exceptions.NoSuchKey:
+        print(
+            f"Warning: S3 key '{s3_flags_key}' not found. Starting with an empty list."
+        )
+        flag_file = {}
+    except Exception as e:
+        print(f"Error reading file list from S3: {e}")
+        return
+
+    # for product in products:
+    # product_type = product["type"]
+    flag_file["updates"][product_type] = 1
+
+    json_flag_string = json.dumps(flag_file)
+    json_flag_bytes = json_flag_string.encode("utf-8")
+    try:
+        response = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_flags_key,
+            Body=json_flag_bytes,
+            ContentType="application/json",
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Updated s3://{MY_BUCKET_NAME}/{s3_flags_key}")
+        else:
+            print(
+                f"Failed to update s3://{MY_BUCKET_NAME}/{s3_flags_key}. Response: {response}"
+            )
+    except Exception as e:
+        print(f"Error writing file list to S3: {e}")
+
+    print(f"nexrad_level3_{product_type}_files.json updated")
+    s3_codes_key = os.path.join(BUCKET_PATH_CODES, "options.json")
+
+    # for product in products:
+    #     product_type = product["type"]
+    print(f"Generating {product_type} code options for options.json")
+
+    product_codes = code_options[product_type]
+    jcodes = [jk[-3:] for jk in filtered_file_list]
+
+    for i, codes in enumerate(product_codes):
+        code = codes["value"]
+        product_codes[i]["count"] = jcodes.count(code)
+
+    code_options[product_type] = product_codes
+    print(f"updating options.json for {product_type}")
+
+    json_code_string = json.dumps(code_options)
+    json_code_bytes = json_code_string.encode("utf-8")
+    try:
+        response = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_codes_key,
+            Body=json_code_bytes,
+            ContentType="application/json",
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Updated s3://{MY_BUCKET_NAME}/{s3_codes_key}")
+        else:
+            print(
+                f"Failed to update s3://{MY_BUCKET_NAME}/{s3_codes_key}. Response: {response}"
+            )
+    except Exception as e:
+        print(f"Error writing file list to S3: {e}")
 
 
 def download_nexrad_level3_data(
-    # config,
-    # files,
     filename,
     existing_files,
-    # product,
     bucket_name="unidata-nexrad-level3",
-    # parent_download_dir="nexrad_level3_data",
 ):
-    # download_dir = os.path.join(parent_download_dir, product_type)
-
-    # session = aiobotocore.session.get_session()
-    # async with session.create_client("s3") as s3_client:
-    # if not os.path.exists(download_dir):
-    #     os.makedirs(download_dir)
-
-    # existing_files = os.listdir(download_dir)
-
-    # downloaded_files = []
-    # for filename in files:
     fns = filename.split("_")
-
     normalized_filename = (
         f"K{''.join([fns[0], *fns[2:5]])}_{''.join(fns[5:8])}_{fns[1]}"
     )
-
-    fn = filename.replace("_", "")
-    normalized_filename = f"K{fn[:-6]}_{fn[-6:]}"
+    # fn = filename.replace("_", "")
+    # normalized_filename = f"K{fn[:-6]}_{fn[-6:]}"
 
     if normalized_filename in existing_files:
         print(f"File {filename} already exists, skipping.")
@@ -155,55 +193,40 @@ def download_nexrad_level3_data(
     download_path = os.path.join(DOWNLOAD_FOLDER, filename)
     print(f"Downloading {filename} to {download_path}")
 
-    try:
-        # response = await s3_client.get_object(Bucket=bucket_name, Key=filename)
-        response = S3_CLIENT.get_object(Bucket=bucket_name, Key=filename)
-        parts = []
-        body = response["Body"]
-        # while data := await body.read(CHUNK_SIZE):
-        while data := body.read(CHUNK_SIZE):
-            parts.append(data)
+    # try:
+    response = unidata_s3_client.get_object(Bucket=bucket_name, Key=filename)
+    parts = []
+    body = response["Body"]
+    while data := body.read(CHUNK_SIZE):
+        parts.append(data)
 
-        content = b"".join(parts)
+    content = b"".join(parts)
 
-        with open(download_path, "wb") as f:
-            f.write(content)
+    with open(download_path, "wb") as f:
+        f.write(content)
 
-        print(f"Downloaded {filename} successfully.")
+    print(f"Downloaded {filename} successfully.")
 
-        # downloaded_files.append(filename)
-        return filename
-    except Exception as e:
-        print(f"ERROR downloading {filename}: {e}")
-        return False
-
-    # return downloaded_files
+    return filename
+    # except Exception as e:
+    #     print(f"ERROR downloading {filename}: {e}")
+    #     return False
 
 
 def fetch_nexrad_level3_data(
-    # config,
     product_code,
     radar_site,
     bucket_name,
     start_time,
     end_time,
-    # product,
     max_keys=1000,
 ):
-
-    # session = boto3.session.Session()
-    # s3_client = session.client("s3", config=config, region_name="us-east-1")
-
-    # session = aiobotocore.session.get_session()
-    # async with session.create_client("s3") as s3:
     all_files_list = []
-
-    # for product_code in product_codes:
     current_time = start_time
 
-    # file_list_for_product = []
     while current_time <= end_time:
-        prefix = f"{radar_site}_{product_code}_{current_time.strftime('%Y_%m_%d_%H')}"
+        code = product_code["value"]
+        prefix = f"{radar_site}_{code}_{current_time.strftime('%Y_%m_%d_%H')}"
 
         continuation_token = None
 
@@ -216,10 +239,10 @@ def fetch_nexrad_level3_data(
             if continuation_token:
                 list_kwargs["ContinuationToken"] = continuation_token
 
-            response = S3_CLIENT.list_objects_v2(**list_kwargs)
+            response = unidata_s3_client.list_objects_v2(**list_kwargs)
 
             for obj in response.get("Contents", []):
-                if matched_file := _match_file(product_code, obj):
+                if matched_file := _match_file(code, obj):
                     all_files_list.append(matched_file)
 
             continuation_token = response.get("NextContinuationToken")
@@ -227,12 +250,10 @@ def fetch_nexrad_level3_data(
                 break
 
         current_time += timedelta(hours=1)
-        # all_files_list.extend(all_files_list)
 
-        print(f"Files found for product code {product_code}: {all_files_list}")
+        print(f"Files found for product code {code}: {all_files_list}")
 
     return all_files_list
-    # return {product: all_files_list}
 
 
 def _match_file(product_code_prefix, obj):
@@ -267,24 +288,29 @@ def _match_file(product_code_prefix, obj):
     return filename
 
 
-def get_product_codes(product):
-    code_options = []
+def get_product_codes():
+    s3_codes_key = os.path.join(BUCKET_PATH_CODES, "options.json")
+    code_options = {}
+    try:
+        response = s3_client.get_object(Bucket=MY_BUCKET_NAME, Key=s3_codes_key)
+        code_options = json.loads(response["Body"].read().decode("utf-8"))
+    except s3_client.exceptions.NoSuchKey:
+        print(
+            f"Warning: S3 key '{s3_codes_key}' not found. Starting with an empty codes."
+        )
+        code_options = {}
+    except Exception as e:
+        print(f"Error reading file list from S3: {e}")
+        return
 
-    with open(ABSOLUTE_CODES_PATH, "r") as f:
-        code_options = json.load(f)
-
-    product_codes = [opt.get("value") for opt in code_options[product["type"]]]
-
-    yield from product_codes
+    return code_options
 
 
 async def main(loop):
-    minutes = 5
-
+    minutes = 180
     now_utc = datetime.datetime.now(timezone.utc)
     end_time_utc = now_utc
     start_time_utc = now_utc - timedelta(minutes=minutes)
-
     bucket_name = "unidata-nexrad-level3"
     radar_site = "PDT"
 
@@ -302,11 +328,14 @@ async def main(loop):
         os.makedirs(DOWNLOAD_FOLDER)
 
     current_path = os.getcwd()
-    file_path = os.path.join(current_path, f"nexrad_level3_data")
-
+    file_path = os.path.join(current_path, DOWNLOAD_FOLDER)
     plotted_files = {}
+    code_options = get_product_codes()
+
+    existing_files = {}
     for product in products:
-        product_codes = get_product_codes(product)
+        product_type = product["type"]
+        product_codes = code_options[product_type]
 
         nested_files_to_download = await asyncio.gather(
             *(
@@ -327,14 +356,25 @@ async def main(loop):
             nested_files_to_download, flat=[], remove_falsey=True
         )
 
-        print(f"Total Files found for {product['type']}: {files_to_download}")
+        print(f"Total Files found for {product_type}: {files_to_download}")
+        if not files_to_download:
+            continue
 
-        existing_files = []
+        list_filename = f"nexrad_level3_{product_type}_files.json"
+        s3_list_key = BUCKET_PATH_LISTS + list_filename
+        try:
+            response = s3_client.get_object(Bucket=MY_BUCKET_NAME, Key=s3_list_key)
+            existing_files[product_type] = json.loads(
+                response["Body"].read().decode("utf-8")
+            )
+        except s3_client.exceptions.NoSuchKey:
+            print(
+                f"Warning: S3 key '{s3_list_key}' not found. Starting with an empty existing files list."
+            )
 
-        LIST_FILE_NAME = f"nexrad_level3_{product['type']}_files.json"
-
-        with open(os.path.join(ABSOLUTE_LIST_PATH, LIST_FILE_NAME), "r") as f:
-            existing_files.extend(json.load(f))
+        if not existing_files:
+            print(f"No existing files found for {product}.")
+            continue
 
         downloaded_files = []
         if files_to_download:
@@ -344,38 +384,54 @@ async def main(loop):
                         executor,
                         download_nexrad_level3_data,
                         filename,
-                        existing_files,
+                        existing_files[product_type],
+                        # "unidata-nexrad-level3",
                     )
                     for filename in files_to_download
                 ),
             )
 
         else:
-            print(f"No {product['type']} files to download.")
+            print(f"No {product_type} files to download.")
             continue
+
+        downloaded_files = [d for d in downloaded_files if d]
 
         print("downloaded_files:", downloaded_files)
 
         if downloaded_files:
-            plotted_files[product["type"]] = await asyncio.gather(
+            plotted_files[product_type] = await asyncio.gather(
                 *(
                     loop.run_in_executor(
                         executor,
                         read_and_plot_nexrad_level3_data,
                         file,
                         file_path,
-                        product["type"],
+                        product_type,
                         product["field"],
                     )
                     for file in downloaded_files
                 ),
             )
-
         else:
-            print("No files downloaded.")
+            print(f"No files downloaded for {product}.")
             continue
 
-    generate_file_list_json(plotted_files, products, radar_site)
+        plotted_files[product_type] = [f for f in plotted_files[product_type] if f]
+
+        if not plotted_files[product_type]:
+            print(f"No plotted files for {product_type}.")
+            continue
+
+        update_metadata(
+            plotted_files[product_type],
+            product_type,
+            radar_site,
+            existing_files[product_type],
+            code_options,
+        )
+
+    delete_old_s3_files(MY_BUCKET_NAME, BUCKET_PATH_PLOTS, s3_client, 180)
 
     for root, dirs, files in os.walk(file_path):
         print(f"Removing all temp files")
@@ -393,6 +449,6 @@ if __name__ == "__main__":
     loop.run_until_complete(main(loop))
     end = time()
     print(
-        f"get_rexrad_data_level2.py completed in {round((end - start)/60, 2)} minutes "
+        f"get_rexrad_data_level3.py completed in {round((end - start)/60, 2)} minutes "
         f"on {datetime.datetime.now()}."
     )

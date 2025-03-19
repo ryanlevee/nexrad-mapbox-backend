@@ -1,1 +1,7 @@
-{"updated":0,"updates":{"reflectivity":0,"hydrometeor":null,"precipitation":null}}
+{
+    "updates": {
+        "reflectivity": 1,
+        "hydrometeor": 0,
+        "precipitation": 0
+    }
+}

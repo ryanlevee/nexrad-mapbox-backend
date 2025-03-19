@@ -1,52 +1,28 @@
+import io
 import json
 import os
 
+import boto3
 import matplotlib.pyplot as plt
 import numpy as np
 import pyart
+from boto3.s3.transfer import TransferConfig
+from botocore import UNSIGNED
+from botocore.client import Config
 from pyart.core import transforms
 
 RELATIVE_PATH = "./public/"
-ABSOLUTE_IMAGE_PATH = f"{os.path.abspath(RELATIVE_PATH)}/plots_level3/"
+LOCAL_COLORBAR_PATH = f"{os.path.abspath(RELATIVE_PATH)}/plots_level3/"  # not in use
+BUCKET_PATH_PLOTS = "plots_level3/"  # Example S3 path for plots
+MY_BUCKET_NAME = "nexrad-mapbox"  # Replace with your actual bucket name
+DOWNLOAD_FOLDER = "public/nexrad_level3_data"
 
-
-def generate_colorbar(ax, product_name, file_base):
-    """
-    Generates and saves a separate colorbar image in a *dedicated figure*.
-
-    Args:
-        ax: The Matplotlib Axes object where the radar plot is drawn.
-        product_name (str): Name of the radar product (e.g., 'reflectivity').
-        file_base (str): Base filename of the radar data.
-    """
-
-    plot_obj = ax.collections[0]
-
-    fig_colorbar = plt.figure(figsize=(0.5, 7))
-    ax_colorbar = fig_colorbar.add_axes([0.2, 0.05, 0.6, 0.9])
-
-    fig_colorbar.colorbar(
-        mappable=plot_obj,
-        cax=ax_colorbar,
-        orientation="vertical",
-        label=product_name.capitalize() + " (dBZ)",
-    )
-
-    ax_colorbar.yaxis.set_label_position("right")
-    ax_colorbar.yaxis.label.set_rotation(270)
-    ax_colorbar.yaxis.label.set_verticalalignment("bottom")
-
-    colorbar_image_name = f"{file_base}_{product_name}_colorbar.png"
-    colorbar_image_path_full = os.path.join(ABSOLUTE_IMAGE_PATH, colorbar_image_name)
-
-    fig_colorbar.savefig(
-        colorbar_image_path_full,
-        bbox_inches="tight",
-        format="png",
-        transparent=True,
-    )
-    plt.close(fig_colorbar)
-    print(f"Saved colorbar image to: {colorbar_image_path_full}")
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION"),
+)
 
 
 def read_and_plot_nexrad_level3_data(filename, file_path, product_type, field):
@@ -57,26 +33,22 @@ def read_and_plot_nexrad_level3_data(filename, file_path, product_type, field):
     )
 
     file_index = 0
-
-    img_ext = ".png"
-    save_img_filename = f"{normalized_filename}_{product_type}_idx{file_index}{img_ext}"
-    json_ext = ".json"
-    save_json_filename = (
-        f"{normalized_filename}_{product_type}_idx{file_index}{json_ext}"
-    )
-
     radar_data_path = os.path.join(file_path, filename)
-
     radar = False
 
     # print("Reading NEXRAD Level 3 file:", radar_data_path)
     try:
-        radar = pyart.io.read_nexrad_level3(radar_data_path)
+        radar = pyart.io.read(radar_data_path)
     except FileNotFoundError:
         print(f"Error: File not found at path: {radar_data_path}")
+        return False
+    except AssertionError as e:
+        print(e)
+        return False
     except Exception as e:
-        print(f"General Error occurred while reading file: {radar_data_path}A")
+        print(f"General Error occurred while reading file: {radar_data_path}")
         print("Error details:", e)
+        return False
 
     if not radar:
         print(f"Error: {product_type} radar cannot be created for: {radar_data_path}")
@@ -140,12 +112,31 @@ def read_and_plot_nexrad_level3_data(filename, file_path, product_type, field):
         "bounding_box_lon_lat": bbox,
     }
 
-    json_path_full = os.path.join(ABSOLUTE_IMAGE_PATH, save_json_filename)
+    json_ext = ".json"
+    save_json_filename = (
+        f"{normalized_filename}_{product_type}_idx{file_index}{json_ext}"
+    )
+    s3_json_key = BUCKET_PATH_PLOTS + save_json_filename
 
-    with open(json_path_full, "w") as f:
-        json.dump(bbox_json_data, f, indent=4)
+    json_string = json.dumps(bbox_json_data)
+    json_bytes = json_string.encode("utf-8")
+    try:
+        response = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_json_key,
+            Body=json_bytes,
+            ContentType="application/json",
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Saved bounding box JSON to: s3://{MY_BUCKET_NAME}/{s3_json_key}")
+        else:
+            print(f"Failed to save bounding box JSON to S3. Response: {response}")
+    except Exception as e:
+        print(f"Error saving bounding box JSON to S3: {e}")
 
-    print(f"Saved bounding box JSON to: {json_path_full}")
+    # json_path_full = os.path.join(LOCAL_COLORBAR_PATH, save_json_filename)  # not in use
+    # with open(json_path_full, "w") as f:
+    #     json.dump(bbox_json_data, f)
 
     fig = plt.figure(figsize=(10, 10), dpi=350)
     ax = plt.gca()
@@ -172,36 +163,108 @@ def read_and_plot_nexrad_level3_data(filename, file_path, product_type, field):
         ax=ax,
     )
 
-    if not os.path.exists(ABSOLUTE_IMAGE_PATH):
-        os.makedirs(ABSOLUTE_IMAGE_PATH)
+    # if not os.path.exists(LOCAL_COLORBAR_PATH):  # not in use
+    #     os.makedirs(LOCAL_COLORBAR_PATH)  # not in use
 
-    image_path_full = os.path.join(ABSOLUTE_IMAGE_PATH, save_img_filename)
+    img_ext = ".png"
+    save_img_filename = f"{normalized_filename}_{product_type}_idx{file_index}{img_ext}"
 
+    # image_path_full = os.path.join(LOCAL_COLORBAR_PATH, save_img_filename)  # not in use
+    s3_image_key = BUCKET_PATH_PLOTS + save_img_filename
+
+    # Image saving using put_object directly
+    buffer = io.BytesIO()
     plt.savefig(
-        image_path_full,
-        bbox_inches="tight",
-        pad_inches=0,
-        format="png",
-        transparent=True,
+        buffer, bbox_inches="tight", pad_inches=0, format="png", transparent=True
     )
+    buffer.seek(0)
+    image_data = buffer.getvalue()
+
+    # s3_client_local = boto3.client('s3', config=CONFIG, region_name="us-east-1")
+
+    try:
+        response_image = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_image_key,
+            Body=image_data,
+            ContentType="image/png",
+        )
+        if (
+            response_image
+            and response_image.get("ResponseMetadata")
+            and response_image["ResponseMetadata"]["HTTPStatusCode"] == 200
+        ):
+            print(
+                f"Created image, Elevation: {elevation_angle:.2f} degrees, Azimuth: "
+                f"{azimuth_angle:.2f} degrees. Saved to s3://{MY_BUCKET_NAME}/{s3_image_key}"
+            )
+        else:
+            print(f"Failed to save image to S3. Response: {response_image}")
+    except Exception as e:
+        print(f"Error saving image to S3 (put_object direct): {type(e)}, {e}")
 
     plt.close()
 
-    print(f"Plot saved to {save_img_filename}")
+    # plt.savefig(
+    #     image_path_full,
+    #     bbox_inches="tight",
+    #     pad_inches=0,
+    #     format="png",
+    #     transparent=True,
+    # )
+
+    # plt.close()
 
     return normalized_filename
 
-    # return {normalized_filename: {"sweeps": 1}}
-
 
 # current_path = os.getcwd()
-# file_path = os.path.join(current_path, f"nexrad_level3_data")
-# product = {"type": "hydrometeor", "field": "radar_echo_classification"}
+# file_path = os.path.join(current_path, f"public/nexrad_level3_data")
+# product = {"type": "precipitation", "field": "radar_echo_classification"}
 
 
 # read_and_plot_nexrad_level3_data(
-#     'PDT_N1H_2025_03_16_18_08_20',
+#     "PDT_DU3_2025_03_19_01_10_48",
 #     file_path,
-#     product['type'],
-#     product['field'],
+#     product["type"],
+#     product["field"],
 # )
+
+
+def generate_colorbar(ax, product_name, file_base):
+    """
+    Generates and saves a separate colorbar image in a *dedicated figure*.
+
+    Args:
+        ax: The Matplotlib Axes object where the radar plot is drawn.
+        product_name (str): Name of the radar product (e.g., 'reflectivity').
+        file_base (str): Base filename of the radar data.
+    """
+
+    plot_obj = ax.collections[0]
+
+    fig_colorbar = plt.figure(figsize=(0.5, 7))
+    ax_colorbar = fig_colorbar.add_axes([0.2, 0.05, 0.6, 0.9])
+
+    fig_colorbar.colorbar(
+        mappable=plot_obj,
+        cax=ax_colorbar,
+        orientation="vertical",
+        label=product_name.capitalize() + " (dBZ)",
+    )
+
+    ax_colorbar.yaxis.set_label_position("right")
+    ax_colorbar.yaxis.label.set_rotation(270)
+    ax_colorbar.yaxis.label.set_verticalalignment("bottom")
+
+    colorbar_image_name = f"{file_base}_{product_name}_colorbar.png"
+    colorbar_image_path_full = os.path.join(LOCAL_COLORBAR_PATH, colorbar_image_name)  # not in use
+
+    fig_colorbar.savefig(
+        colorbar_image_path_full,
+        bbox_inches="tight",
+        format="png",
+        transparent=True,
+    )
+    plt.close(fig_colorbar)
+    print(f"Saved colorbar image to: {colorbar_image_path_full}")

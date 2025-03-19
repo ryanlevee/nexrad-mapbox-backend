@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import io
 import json
 import os
 from concurrent.futures import ProcessPoolExecutor
@@ -18,23 +19,46 @@ from botocore import UNSIGNED
 from botocore.client import Config
 from pyart.core import transforms
 
-RELATIVE_PATH = "./public/"
-ABSOLUTE_IMAGE_PATH = f"{os.path.abspath(RELATIVE_PATH)}/plots_level2/"
-ABSOLUTE_LIST_PATH = f"{os.path.abspath(RELATIVE_PATH)}/lists/"
-LIST_FILE_NAME = "nexrad_level2_reflectivity_files.json"
-DOWNLOAD_FOLDER = "public/nexrad_level2_data"
+from helpers import delete_old_s3_files
 
+BUCKET_PATH_PLOTS = "plots_level2/"
+BUCKET_PATH_LISTS = "lists/"
+BUCKET_PATH_FLAG = "flags/"
+MY_BUCKET_NAME = "nexrad-mapbox"
+DOWNLOAD_FOLDER = "public/nexrad_level2_data"
 CHUNK_SIZE = 1024 * 1024 * 2
 
+TRANSFER_CONFIG = TransferConfig(max_concurrency=50)
+CONFIG = Config(signature_version=UNSIGNED, s3={"transfer_config": TRANSFER_CONFIG})
+SESSION = boto3.session.Session()
+noaa_s3_client = SESSION.client("s3", config=CONFIG, region_name="us-east-1")
 
-def generate_file_list_json(plotted_files, product_type, radar_site):
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION"),
+)
+
+
+def update_metadata(plotted_files, product_type, radar_site):
     filtered_file_list = {}
     product_file_list = {}
     print(f"Generating file list for nexrad_level2_{product_type}_files.json")
-    LIST_FILENAME = f"nexrad_level2_{product_type}_files.json"
-    with open(os.path.join(ABSOLUTE_LIST_PATH, LIST_FILENAME), "r") as f:
-        product_file_list = json.load(f)
-        f.close()
+    list_filename = f"nexrad_level2_{product_type}_files.json"
+    s3_list_key = BUCKET_PATH_LISTS + list_filename
+
+    try:
+        response = s3_client.get_object(Bucket=MY_BUCKET_NAME, Key=s3_list_key)
+        product_file_list = json.loads(response["Body"].read().decode("utf-8"))
+    except s3_client.exceptions.NoSuchKey:
+        print(
+            f"Warning: S3 key '{s3_list_key}' not found. Starting with an empty list."
+        )
+        product_file_list = {}
+    except Exception as e:
+        print(f"Error reading file list from S3: {e}")
+        return
 
     plotted_file_list = list(plotted_files[product_type].keys())
     plotted_file_list.sort()
@@ -56,48 +80,65 @@ def generate_file_list_json(plotted_files, product_type, radar_site):
 
     filtered_product_list.update(plotted_files[product_type])
 
-    # indiv_filenames = list(set(plotted_file_list))
-
-    # for fn in indiv_filenames:
-    #     if fn >= min_prefix:
-    #         filtered_product_list.update({fn: {"sweeps": plotted_file_list.count(fn)}})
-
-    with open(os.path.join(ABSOLUTE_LIST_PATH, LIST_FILENAME), "w+") as g:
-        json.dump(filtered_product_list, g)
-        g.close()
+    json_list_string = json.dumps(filtered_product_list)
+    json_list_bytes = json_list_string.encode("utf-8")
+    try:
+        response = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_list_key,
+            Body=json_list_bytes,
+            ContentType="application/json",
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Updated s3://{MY_BUCKET_NAME}/{s3_list_key}")
+        else:
+            print(
+                f"Failed to update s3://{MY_BUCKET_NAME}/{s3_list_key}. Response: {response}"
+            )
+    except Exception as e:
+        print(f"Error writing file list to S3: {e}")
 
     [filtered_file_list.update({k: v}) for k, v in filtered_product_list.items()]
 
-    print(f"nexrad_level2_{product_type}_files.json updated")
+    print(f"nexrad_level2_{product_type}_files.json updated in S3")
+    print(
+        f"Removing old {product_type} pngs and jsons in s3://{MY_BUCKET_NAME}/{BUCKET_PATH_PLOTS}"
+    )
 
-    print(f"Removing old {product_type} pngs and jsons in {ABSOLUTE_IMAGE_PATH}")
+    flag_filename = f"update_flags.json"
+    s3_flag_key = BUCKET_PATH_FLAG + flag_filename
 
-    # for file in os.listdir(ABSOLUTE_IMAGE_PATH):
-    #     if file[:23] not in filtered_file_list:
-    #         os.unlink(os.path.join(ABSOLUTE_IMAGE_PATH, file))
+    try:
+        response = s3_client.get_object(Bucket=MY_BUCKET_NAME, Key=s3_flag_key)
+        flag_file = json.loads(response["Body"].read().decode("utf-8"))
+    except s3_client.exceptions.NoSuchKey:
+        print(
+            f"Warning: S3 key '{s3_flag_key}' not found. Starting with an empty list."
+        )
+        flag_file = {}
+    except Exception as e:
+        print(f"Error reading file list from S3: {e}")
+        return
 
-    # files_for_json = file_list
+    flag_file["updates"][product_type] = 1
 
-    # current_json = {}
-    # try:
-    #     with open(
-    #         os.path.join(
-    #             ABSOLUTE_LIST_PATH, f"nexrad_level2_{product_type}_files.json"
-    #         ),
-    #         "r",
-    #     ) as f:
-    #         current_json = json.load(f)
-    # except FileNotFoundError:
-    #     current_json = {}
-    # current_json.update(files_for_json)
-
-    # with open(
-    #     os.path.join(
-    #         ABSOLUTE_LIST_PATH, f"nexrad_level2_{product_type}_files.json"
-    #     ),
-    #     "w+",
-    # ) as g:
-    #     json.dump(current_json, g)
+    json_flag_string = json.dumps(flag_file)
+    json_flag_bytes = json_flag_string.encode("utf-8")
+    try:
+        response = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_flag_key,
+            Body=json_flag_bytes,
+            ContentType="application/json",
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Updated s3://{MY_BUCKET_NAME}/{s3_flag_key}")
+        else:
+            print(
+                f"Failed to update s3://{MY_BUCKET_NAME}/{s3_flag_key}. Response: {response}"
+            )
+    except Exception as e:
+        print(f"Error writing file list to S3: {e}")
 
 
 def calculate_file_index(radar, sweep_num):
@@ -125,9 +166,7 @@ def generate_colorbar(ax, product_name, file_base):
         product_name (str): Name of the radar product (e.g., 'reflectivity').
         file_base (str): Base filename of the radar data.
     """
-
     plot_obj = ax.collections[0]
-
     fig_colorbar = plt.figure(figsize=(0.5, 7))
     ax_colorbar = fig_colorbar.add_axes([0.2, 0.05, 0.6, 0.9])
 
@@ -143,22 +182,31 @@ def generate_colorbar(ax, product_name, file_base):
     ax_colorbar.yaxis.label.set_verticalalignment("bottom")
 
     colorbar_image_name = f"{file_base}_{product_name}_colorbar.png"
-    colorbar_image_path_full = os.path.join(ABSOLUTE_IMAGE_PATH, colorbar_image_name)
+    s3_image_key = BUCKET_PATH_PLOTS + colorbar_image_name
 
-    fig_colorbar.savefig(
-        colorbar_image_path_full,
-        bbox_inches="tight",
-        format="png",
-        transparent=True,
-    )
+    buffer = io.BytesIO()
+    fig_colorbar.savefig(buffer, bbox_inches="tight", format="png", transparent=True)
+    buffer.seek(0)
+
+    try:
+        response = s3_client.upload_fileobj(
+            buffer, MY_BUCKET_NAME, s3_image_key, ExtraArgs={"ContentType": "image/png"}
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Saved colorbar image to: s3://{MY_BUCKET_NAME}/{s3_image_key}")
+        else:
+            print(f"Failed to save colorbar image to S3. Response: {response}")
+    except Exception as e:
+        print(f"Error saving colorbar image to S3: {e}")
+
     plt.close(fig_colorbar)
-    print(f"Saved colorbar image to: {colorbar_image_path_full}")
 
 
 def process_single_sweep(radar, sweep_num, file_key, product):
     """Processes a single sweep of radar data and creates an image and JSON."""
     file_index = calculate_file_index(radar, sweep_num)
     sweep_start = radar.sweep_start_ray_index["data"][sweep_num]
+
     elevation_angle = radar.elevation["data"][sweep_start]
     elevation_list = []
     for s in range(radar.nsweeps):
@@ -225,12 +273,23 @@ def process_single_sweep(radar, sweep_num, file_key, product):
 
     file_base = file_key.split("/")[-1]
     json_name = f"{file_base}_{product}_idx{file_index}.json"
-    json_path_full = os.path.join(ABSOLUTE_IMAGE_PATH, json_name)
+    s3_json_key = BUCKET_PATH_PLOTS + json_name
 
-    with open(json_path_full, "w") as f:
-        json.dump(bbox_json_data, f, indent=4)
-
-    print(f"Saved bounding box JSON to: {json_path_full}")
+    json_string = json.dumps(bbox_json_data)
+    json_bytes = json_string.encode("utf-8")
+    try:
+        response = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_json_key,
+            Body=json_bytes,
+            ContentType="application/json",
+        )
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Saved bounding box JSON to: s3://{MY_BUCKET_NAME}/{s3_json_key}")
+        else:
+            print(f"Failed to save bounding box JSON to S3. Response: {response}")
+    except Exception as e:
+        print(f"Error saving bounding box JSON to S3: {e}")
 
     fig = plt.figure(
         figsize=(10, 10),
@@ -263,30 +322,41 @@ def process_single_sweep(radar, sweep_num, file_key, product):
     )
 
     image_name = f"{file_base}_{product}_idx{file_index}.png"
-    image_path_full = os.path.join(ABSOLUTE_IMAGE_PATH, image_name)
+    s3_image_key = BUCKET_PATH_PLOTS + image_name
 
-    if not os.path.exists(ABSOLUTE_IMAGE_PATH):
-        os.makedirs(ABSOLUTE_IMAGE_PATH)
-
+    buffer = io.BytesIO()
     plt.savefig(
-        image_path_full,
-        bbox_inches="tight",
-        pad_inches=0,
-        format="png",
-        transparent=True,
+        buffer, bbox_inches="tight", pad_inches=0, format="png", transparent=True
     )
- 
-    plt.close()
+    buffer.seek(0)
+    image_data = buffer.getvalue()
 
-    print(
-        f"Created image, Elevation: {elevation_angle:.2f} degrees, Azimuth: "
-        f"{azimuth_angle:.2f} degrees. Saved to {image_path_full}"
-    )
+    try:
+        response_image = s3_client.put_object(
+            Bucket=MY_BUCKET_NAME,
+            Key=s3_image_key,
+            Body=image_data,
+            ContentType="image/png",
+        )
+        if (
+            response_image
+            and response_image.get("ResponseMetadata")
+            and response_image["ResponseMetadata"]["HTTPStatusCode"] == 200
+        ):
+            print(
+                f"Created image, Elevation: {elevation_angle:.2f} degrees, Azimuth: "
+                f"{azimuth_angle:.2f} degrees. Saved to s3://{MY_BUCKET_NAME}/{s3_image_key}"
+            )
+        else:
+            print(f"Failed to save image to S3. Response: {response_image}")
+    except Exception as e:
+        print(f"Error saving image to S3 (put_object direct): {type(e)}, {e}")
+
+    plt.close()
 
 
 def plot_and_save_overlays(file_key, product):
     file_prefix = file_key.split("/")[-1]
-
     file_path = os.path.join(DOWNLOAD_FOLDER, file_prefix)
 
     try:
@@ -297,7 +367,6 @@ def plot_and_save_overlays(file_key, product):
             process_single_sweep(radar, sweep_num, file_key, product)
 
         os.remove(file_path)
-        # return file_prefix
         return {"file": file_prefix, "sweeps": num_sweeps}
 
     except Exception as e:
@@ -307,19 +376,12 @@ def plot_and_save_overlays(file_key, product):
         return {"file": file_prefix, "sweeps": 0}
 
 
-TRANSFER_CONFIG = TransferConfig(max_concurrency=50)
-CONFIG = Config(signature_version=UNSIGNED, s3={"transfer_config": TRANSFER_CONFIG})
-SESSION = boto3.session.Session()
-S3_CLIENT = SESSION.client("s3", config=CONFIG, region_name="us-east-1")
-
-
 def get_data_and_create_radar_file(file_key, bucket_name):
     """Downloads and processes all sweeps of a single radar file."""
 
     current_path = os.getcwd()
     file_path = os.path.join(current_path, DOWNLOAD_FOLDER)
     file_prefix = file_key.split("/")[-1]
-
     download_path = os.path.join(file_path, file_prefix)
     print(f"Downloading {file_prefix} to {download_path}")
 
@@ -327,7 +389,7 @@ def get_data_and_create_radar_file(file_key, bucket_name):
         os.makedirs(file_path)
 
     bucket_name = "noaa-nexrad-level2"
-    response = S3_CLIENT.get_object(Bucket=bucket_name, Key=file_key)
+    response = noaa_s3_client.get_object(Bucket=bucket_name, Key=file_key)
     parts = []
     body = response["Body"]
 
@@ -349,7 +411,6 @@ def check_for_files(radar_site, minutes):
     three_hours_ago = now_utc - datetime.timedelta(minutes=minutes)
     start_date = three_hours_ago.date()
     end_date = now_utc.date()
-
     s3_resource = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
     bucket = s3_resource.Bucket("noaa-nexrad-level2")
 
@@ -387,24 +448,30 @@ def check_for_files(radar_site, minutes):
                     continue
 
         current_date += datetime.timedelta(days=1)
-
     return files_to_process
 
 
 async def main(loop):
     radar_site = "KPDT"
     product_type = "reflectivity"
-    minutes = 120
+    minutes = 180
+    list_file_name = f"nexrad_level2_{product_type}_files.json"
+    s3_list_key = BUCKET_PATH_LISTS + list_file_name
 
     files_to_process = check_for_files(radar_site, minutes)
     print(f"\nFiles to process (last {minutes} minutes): {files_to_process}")
 
     existing_files = {}
     try:
-        with open(os.path.join(ABSOLUTE_LIST_PATH, LIST_FILE_NAME), "r") as f:
-            existing_files = json.load(f)
-    except FileNotFoundError:
-        pass
+        response = s3_client.get_object(Bucket=MY_BUCKET_NAME, Key=s3_list_key)
+        existing_files = json.loads(response["Body"].read().decode("utf-8"))
+    except s3_client.exceptions.NoSuchKey:
+        print(
+            f"Warning: S3 key '{s3_list_key}' not found. Starting with an empty existing files list."
+        )
+    except Exception as e:
+        print(f"Error reading existing files list from S3: {e}")
+        existing_files = {}
 
     filtered_files = [
         file_key
@@ -447,11 +514,14 @@ async def main(loop):
         )
 
         plotted_files[product_type] = {
-            item["file"]: {"sweeps": item["sweeps"]} for item in plotted_file_results
+            item["file"]: {"sweeps": item["sweeps"]}
+            for item in plotted_file_results
+            if item["file"]
         }
 
         if plotted_files[product_type]:
-            generate_file_list_json(plotted_files, product_type, radar_site)
+            update_metadata(plotted_files, product_type, radar_site)
+            delete_old_s3_files(MY_BUCKET_NAME, BUCKET_PATH_PLOTS, s3_client, 180)
     else:
         print("No new files to process.")
 

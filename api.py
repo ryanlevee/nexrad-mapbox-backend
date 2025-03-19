@@ -1,149 +1,193 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import io
 import json
 import os
 
+import boto3
+from dotenv import load_dotenv
+from flask import Flask, abort, jsonify, request, send_file
+from flask_cors import CORS
+
+load_dotenv()
+
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="http://localhost:3000")
+
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION"),
+)
+
+BUCKET_NAME = "nexrad-mapbox"
+BUCKET_PATH_PLOTS_PREFIX = "plots_level"
+BUCKET_FLAG_PATH = "flags"
+BUCKET_CODE_PATH = "codes"
+
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
 
 
 @app.route("/*", methods=["OPTIONS"])
 def handle_options():
     return "", 204
 
+@app.route("/code/", methods=["GET"])
+def handle_code_get():
+    object_key = f"{BUCKET_CODE_PATH}/options.json"
+
+    try:
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
+        file_content_bytes = response["Body"].read()
+        file_content = json.loads(file_content_bytes.decode("utf-8"))
+        return jsonify(file_content), 200
+    except s3_client.exceptions.NoSuchKey:
+        abort(404)
+    except Exception as e:
+        print(f"Error accessing S3: {e}")
+        abort(500)
+
 
 @app.route("/flag/", methods=["GET"])
 def handle_flag_get():
-    data = "{}"
-    try:
-        with open("public/flags/update_flags.json", "r") as f:
-            data = f.read()
-        print(data)
-    except FileNotFoundError:
-        data = "{}"
+    object_key = f"{BUCKET_FLAG_PATH}/update_flags.json"
 
-    return jsonify(data), 200
+    try:
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
+        file_content_bytes = response["Body"].read()
+        file_content = json.loads(file_content_bytes.decode("utf-8"))
+        return jsonify(file_content), 200
+    except s3_client.exceptions.NoSuchKey:
+        abort(404)
+    except Exception as e:
+        print(f"Error accessing S3: {e}")
+        abort(500)
 
 
 @app.route("/flag/", methods=["POST"])
 def handle_flag_post():
     try:
-        body = request.get_data(as_text=True)
+        body = request.get_json()
 
         if not body:
-            return jsonify({"error": "Request body is empty"}), 400
+            return jsonify({"error": "Request body is empty or not valid JSON"}), 400
 
-        with open("public/flags/update_flags.json", "w") as f:
-            f.write(body)
-            print("written to file.")
+        object_key = f"{BUCKET_FLAG_PATH}/update_flags.json"
 
-        return jsonify({"updated": True, "message": "Data updated!"}), 200
+        if update_json_in_s3(object_key, body):
+            return (
+                jsonify(
+                    {"updated": True, "message": f"'{object_key}' updated in S3!"}
+                ),
+                200,
+            )
+        else:
+            return jsonify({"error": "Failed to update file in S3"}), 500
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error processing update request: {e}")
         return jsonify({"error": "Internal Server Error"}), 500
 
 
-@app.route("/list/", methods=["GET"])
-def handle_list_get():
+@app.route("/list/<path:level>/<path:product>/", methods=["GET"])
+def handle_list_get(level, product):
+    object_key = f"lists/nexrad_level{level}_{product}_files.json"
 
-    # ###################### JUST FOR TESTING ######################
-    # with open("public/lists/nexrad_level2_reflectivity_files_mod.json", "r") as f:
-    #     mod = f.read()
-
-    # with open("public/lists/nexrad_level2_reflectivity_files.json", "w") as f:
-    #     f.write(mod)
-    #     print("written to file.")
-    # ##############################################################
-
-    data = "{}"
     try:
-        with open(
-            "public/lists/nexrad_level2_reflectivity_files.json", "r"
-        ) as f:
-            data = f.read()
-        print(data)
-    except FileNotFoundError:
-        data = "{}"
-
-    data = {"sent": True, "message": "list GET test received"}
-
-    # ###################### JUST FOR TESTING ######################
-    # with open("public/lists/nexrad_level2_reflectivity_files_orig.json", "r") as f:
-    #     orig = f.read()
-
-    # with open("public/lists/nexrad_level2_reflectivity_files.json", "w") as f:
-    #     f.write(orig)
-    #     print("written to file.")
-    # ##############################################################
-
-    return jsonify(data), 200
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
+        file_content_bytes = response["Body"].read()
+        file_content = json.loads(file_content_bytes.decode("utf-8"))
+        return jsonify(file_content), 200
+    except s3_client.exceptions.NoSuchKey:
+        abort(404)
+    except Exception as e:
+        print(f"Error accessing S3: {e}")
+        abort(500)
 
 
-@app.route("/list-all/", methods=["GET", "OPTIONS"])
+@app.route("/list-all/", methods=["GET"])
 def handle_list_all_get():
-
-    # ###################### JUST FOR TESTING ######################
-    # with open(
-    #     "public/lists/nexrad_level2_reflectivity_files_mod.json", "r"
-    # ) as f:
-    #     mod = f.read()
-
-    # with open("public/lists/nexrad_level2_reflectivity_files.json", "w") as f:
-    #     f.write(mod)
-    #     print("written to file.")
-    # ##############################################################
-
     data = {}
 
+    levels_and_products = [
+        {"product": "reflectivity", "level": 2},
+        {"product": "hydrometeor", "level": 3},
+        {"product": "precipitation", "level": 3},
+    ]
+
+    object_key = "lists/nexrad_level{level}_{product}_files.json"
+
     try:
-        with open(
-            "public/lists/nexrad_level2_reflectivity_files_orig.json", "r"  # FILENAME FOR TESTING
-        ) as f:
-            data["reflectivity"] = json.load(f)
-        with open(
-            "public/lists/nexrad_level3_hydrometeor_files.json", "r"
-        ) as g:
-            data["hydrometeor"] = json.load(g)
-        with open(
-            "public/lists/nexrad_level3_precipitation_files.json", "r"
-        ) as h:
-            data["precipitation"] = json.load(h)
-    except FileNotFoundError as e:
-        print(e)
-        data = {}
+        for item in levels_and_products:
+            product = item["product"]
+            level = item["level"]
+            formatted_key = object_key.format(level=level, product=product)
+            print(formatted_key)
+            response = s3_client.get_object(Bucket=BUCKET_NAME, Key=formatted_key)
+            file_content_bytes = response["Body"].read()
+            data[product] = json.loads(file_content_bytes.decode("utf-8"))
 
-    # data = {"sent": True, "message": "list GET test received"}
+        return jsonify(data), 200
 
-    ###################### JUST FOR TESTING ######################
-    with open(
-        "public/lists/nexrad_level2_reflectivity_files_mod.json", "r"
-    ) as f:
-        orig = f.read()
-
-    with open("public/lists/nexrad_level2_reflectivity_files.json", "w") as f:
-        f.write(orig)
-        print("written to file.")
-
-    with open("public/flags/update_flags.json", "r") as f:
-        flags = json.load(f)
-        flags["updated"] = 1
-        flags["updates"]["reflectivity"] = 1
-        
-
-    with open("public/flags/update_flags.json", "w") as f:
-        json.dump(flags, f)
-        print("written to file.")
+    except s3_client.exceptions.NoSuchKey:
+        abort(404)
+    except Exception as e:
+        print(f"Error accessing S3: {e}")
+        abort(500)
 
 
-    ##############################################################
+@app.route("/data/<path:level>/<path:file_key>/<path:file_ext>", methods=["GET"])
+def handle_data_get(level, file_key, file_ext):
+    object_key = f"{BUCKET_PATH_PLOTS_PREFIX}{level}/{file_key}.{file_ext}"
 
-    # print(data)
+    try:
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=object_key)
+        file_content_bytes = response["Body"].read()
+        mime = "image/png" if file_ext == "png" else "application/json"
 
-    # return data, 200
-    return jsonify(data), 200
+        if file_ext == "json":
+            file_content = json.loads(file_content_bytes.decode("utf-8"))
+            return jsonify(file_content), 200
+        else:
+            return send_file(io.BytesIO(file_content_bytes), mimetype=mime), 200
+
+    except s3_client.exceptions.NoSuchKey:
+        abort(404)
+    except Exception as e:
+        print(f"Error accessing S3: {e}")
+        abort(500)
+
+
+def update_json_in_s3(object_key, new_data):
+    try:
+        json_string = json.dumps(new_data)
+        print(json_string)
+        json_bytes = json_string.encode("utf-8")
+
+        response = s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key=object_key,
+            Body=json_bytes,
+            ContentType="application/json",
+        )
+
+        print(response)
+
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            print(f"Successfully updated '{object_key}' in '{BUCKET_NAME}'.")
+            return True
+        else:
+            print(f"Failed to update '{object_key}'. Response: {response}")
+            return False
+
+    except Exception as e:
+        print(f"Error updating JSON in S3: {e}")
+        return False
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 4000))
-    app.run(host="0.0.0.0", port=port, debug=True)  # Enable debug mode
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, threaded=True, debug=True)
