@@ -72,7 +72,7 @@ def update_metadata(plotted_files, product_type, radar_site):
         str(three_hours_ago).replace("-", "").replace(":", "").replace(" ", "_")
     )
 
-    min_prefix = f"{radar_site}{min_file_datetime}"  # do NOT add "K" for level2
+    min_prefix = f"{radar_site}{min_file_datetime}"
 
     filtered_product_list = {
         k: v for k, v in product_file_list.items() if k >= min_prefix

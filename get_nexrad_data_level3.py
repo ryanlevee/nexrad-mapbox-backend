@@ -45,15 +45,8 @@ def update_metadata(
 ):
     filtered_file_list = {}
 
-    # print(plotted_files)
-
-    # for product in products:
-    # product_type = product["type"]
-
     list_filename = f"nexrad_level3_{product_type}_files.json"
     s3_list_key = BUCKET_PATH_LISTS + list_filename
-
-    # plotted_product_files = plotted_files[product_type]
 
     plotted_product_files.sort()
     latest_file_datetime = plotted_product_files[-1][4:19].replace("_", " ")
@@ -110,8 +103,6 @@ def update_metadata(
         print(f"Error reading file list from S3: {e}")
         return
 
-    # for product in products:
-    # product_type = product["type"]
     flag_file["updates"][product_type] = 1
 
     json_flag_string = json.dumps(flag_file)
@@ -135,8 +126,6 @@ def update_metadata(
     print(f"nexrad_level3_{product_type}_files.json updated")
     s3_codes_key = os.path.join(BUCKET_PATH_CODES, "options.json")
 
-    # for product in products:
-    #     product_type = product["type"]
     print(f"Generating {product_type} code options for options.json")
 
     product_codes = code_options[product_type]
@@ -177,8 +166,6 @@ def download_nexrad_level3_data(
     normalized_filename = (
         f"K{''.join([fns[0], *fns[2:5]])}_{''.join(fns[5:8])}_{fns[1]}"
     )
-    # fn = filename.replace("_", "")
-    # normalized_filename = f"K{fn[:-6]}_{fn[-6:]}"
 
     if normalized_filename in existing_files:
         print(f"File {filename} already exists, skipping.")
@@ -193,7 +180,6 @@ def download_nexrad_level3_data(
     download_path = os.path.join(DOWNLOAD_FOLDER, filename)
     print(f"Downloading {filename} to {download_path}")
 
-    # try:
     response = unidata_s3_client.get_object(Bucket=bucket_name, Key=filename)
     parts = []
     body = response["Body"]
@@ -208,9 +194,6 @@ def download_nexrad_level3_data(
     print(f"Downloaded {filename} successfully.")
 
     return filename
-    # except Exception as e:
-    #     print(f"ERROR downloading {filename}: {e}")
-    #     return False
 
 
 def fetch_nexrad_level3_data(
@@ -385,7 +368,6 @@ async def main(loop):
                         download_nexrad_level3_data,
                         filename,
                         existing_files[product_type],
-                        # "unidata-nexrad-level3",
                     )
                     for filename in files_to_download
                 ),
