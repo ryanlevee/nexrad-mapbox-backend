@@ -29,7 +29,6 @@ BUCKET_CODE_PATH = "codes"
 def add_cors_headers(response):
     response.headers["Access-Control-Max-Age"] = "86400"
     response.headers["Access-Control-Allow-Origin"] = "*"
-
     return response
 
 
@@ -51,7 +50,7 @@ def handle_code_get():
         file_content_bytes = response["Body"].read()
         file_content = json.loads(file_content_bytes.decode("utf-8"))
         answer = jsonify(file_content), 200
-        answer.headers.add("Access-Control-Allow-Origin", "*")
+        # answer.headers.add("Access-Control-Allow-Origin", "*")
         return answer
     except s3_client.exceptions.NoSuchKey:
         abort(404)
@@ -69,7 +68,7 @@ def handle_flag_get():
         file_content_bytes = response["Body"].read()
         file_content = json.loads(file_content_bytes.decode("utf-8"))
         answer = jsonify(file_content), 200
-        answer.headers.add("Access-Control-Allow-Origin", "*")
+        # answer.headers.add("Access-Control-Allow-Origin", "*")
         return answer
     except s3_client.exceptions.NoSuchKey:
         abort(404)
@@ -93,7 +92,7 @@ def handle_flag_post():
                 jsonify({"updated": True, "message": f"'{object_key}' updated in S3!"}),
                 200,
             )
-            response.headers.add("Access-Control-Allow-Origin", "*")
+            # response.headers.add("Access-Control-Allow-Origin", "*")
             return response
         else:
             return jsonify({"error": "Failed to update file in S3"}), 500
@@ -112,7 +111,7 @@ def handle_list_get(level, product):
         file_content_bytes = response["Body"].read()
         file_content = json.loads(file_content_bytes.decode("utf-8"))
         answer = jsonify(file_content), 200
-        answer.headers.add("Access-Control-Allow-Origin", "*")
+        # answer.headers.add("Access-Control-Allow-Origin", "*")
     except s3_client.exceptions.NoSuchKey:
         abort(404)
     except Exception as e:
@@ -143,7 +142,7 @@ def handle_list_all_get():
             data[product] = json.loads(file_content_bytes.decode("utf-8"))
 
         response = jsonify(data), 200
-        response.headers.add("Access-Control-Allow-Origin", "*")
+        # response.headers.add("Access-Control-Allow-Origin", "*")
         return response
 
     except s3_client.exceptions.NoSuchKey:
@@ -200,3 +199,8 @@ def update_json_in_s3(object_key, new_data):
     except Exception as e:
         print(f"Error updating JSON in S3: {e}")
         return False
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 4000))
+    app.run(host="0.0.0.0", port=port, threaded=True, debug=True)
