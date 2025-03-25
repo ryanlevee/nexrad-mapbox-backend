@@ -26,7 +26,7 @@ def delete_objects_with_prefix(bucket_name, prefix, s3_client):
 def delete_old_s3_files(bucket_name, prefix, s3_client, minutes):
     """Deletes PNG and JSON files older than a specified number of minutes from an S3 prefix."""
     now = datetime.datetime.now(datetime.timezone.utc)
-    cutoff = now - datetime.timedelta(minutes=minutes)
+    cutoff = now - datetime.timedelta(minutes=minutes + 60)
     deleted_count = 0
 
     paginator = s3_client.get_paginator("list_objects_v2")
