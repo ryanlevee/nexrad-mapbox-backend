@@ -5,12 +5,12 @@
 **Live Demo:** [**NEXRAD Mapbox on Netlify**](https://nexradmapbox.netlify.app/)
 ###### **NOTE**: Current demo displays data from March 21, 2025 for the KPDT site only. Real-time data functionality is available, but turned off for the moment due to cost. 
 
-**Frontend Repository:** [**NEXRAD Mapbox backend repository**](https://github.com/ryanlevee/nexrad-mapbox)
+**Frontend Repository:** [**NEXRAD Mapbox frontend repository**](https://github.com/ryanlevee/nexrad-mapbox)
 
 
 ## Overview
 
-This repository contains the backend services for the [NEXRAD Mapbox Viewer](https://nexradmapbox.netlify.app/) project. It consists of two main parts:
+This repository contains the backend services for the NEXRAD Mapbox Viewer. It consists of two main parts:
 
 1.  **Data Processing Scripts:** Python scripts that fetch raw NEXRAD Level 2 and Level 3 data from public AWS S3 buckets (NOAA and Unidata), process them using Py-ART and Matplotlib to generate PNG image overlays and JSON metadata, and upload these processed files to a dedicated project S3 bucket.
 2.  **Flask API:** A Python Flask web server that serves the processed data (images, metadata, file lists) from the project S3 bucket to the frontend application via a REST API.
