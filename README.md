@@ -1,4 +1,4 @@
-# NEXRAD Mapbox Backend
+# NEXRAD Weather Radar Viewer with Mapbox - Backend
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
