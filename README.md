@@ -55,8 +55,8 @@ The backend utilizes a standard Python `src` layout for organization:
               │ [processing.L2/L3 modules] using PyArt/Matplotlib
               ▼
 +-------------------------------+
-|  s3_service                   |  Uploads Processed Data & Metadata
-|  (Handles S3 Put/Delete)      |  (Also called by metadata_service)
+| s3_service                    |  Uploads Processed Data & Metadata
+| (Handles S3 Put/Delete)       |  (Also called by metadata_service)
 +-------------┬-----------------+
               │ Stores Processed Files & Updates Metadata Files
               ▼
