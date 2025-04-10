@@ -1,0 +1,13 @@
+flask
+flask-cors
+boto3
+python-dotenv
+waitress
+pyart-mch
+matplotlib
+numpy
+pytz
+
+[dev]
+ruff
+pytest

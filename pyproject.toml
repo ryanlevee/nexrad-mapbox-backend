@@ -1,0 +1,101 @@
+# pyproject.toml
+
+[build-system]
+# Specifies the build backend and its requirements (PEP 517, PEP 518)
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Core project metadata (PEP 621)
+name = "nexrad_backend" # Package name (should match the folder in src/)
+version = "0.1.0"      # Initial version
+description = "Backend API and data processing scripts for the NEXRAD Mapbox Viewer."
+readme = "README.md"
+requires-python = ">=3.9" # Minimum Python version required
+license = { text = "MIT" } # Or { file = "LICENSE" } if you have a LICENSE file
+authors = [
+    { name = "Your Name", email = "your_email@example.com" }, # *** UPDATE THIS ***
+]
+# Classifiers help index the project on PyPI (optional if not publishing)
+# classifiers = [
+#     "Development Status :: 3 - Alpha",
+#     "Intended Audience :: Developers",
+#     "License :: OSI Approved :: MIT License",
+#     "Programming Language :: Python :: 3",
+#     "Programming Language :: Python :: 3.9",
+#     "Programming Language :: Python :: 3.10",
+#     "Programming Language :: Python :: 3.11",
+#     "Framework :: Flask",
+#     "Topic :: Scientific/Engineering :: Atmospheric Science",
+#     "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+# ]
+
+# Runtime dependencies - list packages required to run the application/scripts
+dependencies = [
+    "flask",
+    "flask-cors",
+    "boto3",
+    "python-dotenv",
+    "waitress",      # WSGI server used in server.py
+    "pyart-mch",     # Or "pyart" if you used the standard ARM version. pyart-mch often has ARM Radar specific features. Check your install.
+    "matplotlib",
+    "numpy",
+    "pytz",          # Used in get_nexrad_data_level3.py
+    # Add any other direct dependencies identified from your imports
+]
+
+# Optional dependencies - e.g., for development, testing
+[project.optional-dependencies]
+dev = [
+    "ruff",         # Linter and formatter
+    "pytest",       # Testing framework (if you add tests)
+    # Add other dev tools like black, mypy, etc. if needed
+]
+
+# Optional: Links related to your project
+# [project.urls]
+# Homepage = "https://..."
+# Repository = "https://github.com/your-username/nexrad-mapbox-backend"
+
+# --- Tool Configurations ---
+
+[tool.setuptools]
+# Configuration for setuptools - Package finding is configured below
+# Make sure there are NO other keys defining packages here (like 'packages = ...' or 'package_dir = ...')
+
+[tool.setuptools.packages.find]
+# This section implicitly tells setuptools to find packages
+where = ["src"]  # Look for packages in the 'src' directory
+# Optionally add includes/excludes if needed:
+# include = ["nexrad_backend*"] # Include nexrad_backend and its subpackages
+# exclude = ["tests*"]
+
+# --- Ruff Configuration (Linter & Formatter) ---
+# Example basic configuration. Customize rules as needed.
+# See Ruff docs: https://beta.ruff.rs/docs/configuration/
+[tool.ruff]
+line-length = 88 # Example: Match Black's default
+target-version = "py39" # Target minimum Python version for compatibility checks
+
+[tool.ruff.lint]
+# Select rule codes to enable. 'E' (pycodestyle errors), 'F' (pyflakes), 'W' (pycodestyle warnings)
+# 'I' (isort), 'UP' (pyupgrade) are common starting points.
+select = ["E", "F", "W", "I", "UP"]
+ignore = [] # Add specific rule codes to ignore if necessary
+
+# Configure directories to check/exclude
+# exclude = [".venv", "build", "dist", "*.egg-info"] # Default exclusions are usually good
+
+[tool.ruff.format]
+# Configuration for the Ruff formatter (optional, can use Black instead)
+quote-style = "double"
+indent-style = "space"
+
+# --- Pytest Configuration (Optional, if using pytest) ---
+# [tool.pytest.ini_options]
+# minversion = "6.0"
+# addopts = "-ra -q"
+# testpaths = [
+#     "tests",
+# ]
+# pythonpath = ["src"] # Helps pytest find modules in src layout

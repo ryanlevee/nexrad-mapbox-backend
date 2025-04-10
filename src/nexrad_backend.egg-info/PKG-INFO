@@ -1,0 +1,22 @@
+Metadata-Version: 2.4
+Name: nexrad_backend
+Version: 0.1.0
+Summary: Backend API and data processing scripts for the NEXRAD Mapbox Viewer.
+Author-email: Your Name <your_email@example.com>
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: flask
+Requires-Dist: flask-cors
+Requires-Dist: boto3
+Requires-Dist: python-dotenv
+Requires-Dist: waitress
+Requires-Dist: pyart-mch
+Requires-Dist: matplotlib
+Requires-Dist: numpy
+Requires-Dist: pytz
+Provides-Extra: dev
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Dynamic: license-file
