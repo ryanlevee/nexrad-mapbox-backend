@@ -12,9 +12,9 @@ version = "0.1.0"      # Initial version
 description = "Backend API and data processing scripts for the NEXRAD Mapbox Viewer."
 readme = "README.md"
 requires-python = ">=3.9" # Minimum Python version required
-license = { text = "MIT" } # Or { file = "LICENSE" } if you have a LICENSE file
+license = { text = "MIT" }
 authors = [
-    { name = "Your Name", email = "your_email@example.com" }, # *** UPDATE THIS ***
+    { name = "Ryan Levee", email = "ryanlevee@gmail.com" }, # *** UPDATE THIS ***
 ]
 # Classifiers help index the project on PyPI (optional if not publishing)
 # classifiers = [
