@@ -1,5 +1,3 @@
-# src/nexrad_backend/api/routes.py
-
 import io
 import json
 import logging

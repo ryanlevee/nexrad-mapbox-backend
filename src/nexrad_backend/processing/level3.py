@@ -1,5 +1,3 @@
-# src/nexrad_backend/processing/level3.py
-
 import os
 import io
 import json

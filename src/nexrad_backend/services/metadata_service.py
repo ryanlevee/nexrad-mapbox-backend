@@ -1,4 +1,3 @@
-# src/nexrad_backend/services/metadata_service.py
 import os
 import json
 import datetime

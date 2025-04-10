@@ -1,5 +1,3 @@
-# src/nexrad_backend/processing/common.py
-
 import io
 import os
 import logging

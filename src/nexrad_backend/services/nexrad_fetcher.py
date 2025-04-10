@@ -1,5 +1,3 @@
-# src/nexrad_backend/services/nexrad_fetcher.py
-
 import os
 import re
 import datetime

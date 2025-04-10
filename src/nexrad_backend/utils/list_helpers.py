@@ -1,5 +1,3 @@
-# src/nexrad_backend/utils/list_helpers.py
-
 import logging
 from typing import Any, List, Optional, TypeVar
 

@@ -1,5 +1,3 @@
-# scripts/process_level2.py
-
 import asyncio
 import os
 import sys

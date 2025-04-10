@@ -4,9 +4,6 @@ import logging
 from flask import Flask
 from flask_cors import CORS
 
-# Import config if needed for CORS settings, otherwise defaults are used
-# from nexrad_backend import config
-
 log = logging.getLogger(__name__)
 
 
@@ -34,7 +31,7 @@ def create_app() -> Flask:
     with app.app_context():
         from .routes import api_bp  # Import the blueprint defined in routes.py
 
-        app.register_blueprint(api_bp)  # <<< **** ENSURE THIS LINE EXISTS ****
+        app.register_blueprint(api_bp)
         log.info("Registered API blueprint.")
 
     log.info("Flask app configuration complete.")
