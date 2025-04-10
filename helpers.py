@@ -1,28 +1,6 @@
 import datetime
 
 
-def list_objects_with_prefix(bucket_name, prefix, s3_client):
-    objects = []
-    paginator = s3.get_paginator('list_objects_v2')
-    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-        if 'Contents' in page:
-            objects.extend(page['Contents'])
-    return objects
-
-def delete_objects_with_prefix(bucket_name, prefix, s3_client):
-    objects = list_objects_with_prefix(bucket_name, prefix)
-    keys = [{'Key': obj['Key']} for obj in objects]
-
-    # Delete objects in batches of 1000 or less (S3 limit)
-    while keys:
-        chunk = keys[:1000]
-        keys = keys[1000:]
-        try:
-            s3_client.delete_objects(Bucket=bucket_name, Delete={'Objects': chunk})
-        except Exception as e:
-            print(f"Error deleting objects: {e}")
-
-
 def delete_old_s3_files(bucket_name, prefix, s3_client, minutes):
     """Deletes PNG and JSON files older than a specified number of minutes from an S3 prefix."""
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -54,7 +32,6 @@ def delete_old_s3_files(bucket_name, prefix, s3_client, minutes):
                 objects_to_delete = objects_to_delete[1000:]
 
                 response = s3_client.delete_objects(
-                    # Bucket=bucket_name, Delete={"Objects": objects_to_delete}
                     Bucket=bucket_name, Delete={"Objects": chunk}
                 )
                 if "Deleted" in response:
