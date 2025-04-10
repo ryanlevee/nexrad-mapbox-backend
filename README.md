@@ -121,7 +121,7 @@ The backend utilizes a standard Python `src` layout for organization:
 * **API Framework:** Flask
 * **WSGI Server:** Waitress
 * **AWS SDK:** Boto3
-* **Scientific Computing:** Py-ART (likely `pyart-mch`), NumPy
+* **Scientific Computing:** Py-ART, NumPy
 * **Plotting:** Matplotlib
 * **Asynchronous Programming:** asyncio, concurrent.futures
 * **Environment Management:** python-dotenv
@@ -136,10 +136,10 @@ The backend utilizes a standard Python `src` layout for organization:
 | :-------- | :------------------------------------- | :--------------------------------------------------------------------------------------------------------- | :--------------- | :-------------- |
 | `GET`     | `/code/`                               | Retrieves the `codes/options.json` file containing Level 3 product code options and counts.                | 200 (JSON Body)  | 404, 500        |
 | `GET`     | `/flag/`                               | Retrieves the `flags/update_flags.json` file.                                                              | 200 (JSON Body)  | 404, 500        |
-| `POST`    | `/flag/`                               | Updates the `flags/update_flags.json` file with the provided JSON body. *(Note: No auth implemented)* | 200 (JSON Body)  | 400, 500        |
+| `POST`    | `/flag/`                               | Updates the `flags/update_flags.json` file with the provided JSON body.                                    | 200 (JSON Body)  | 400, 500        |
 | `GET`     | `/list/<level>/<product>/`             | Retrieves the JSON file list for a specific level and product (e.g., `/list/2/reflectivity/`).             | 200 (JSON Body)  | 400, 404, 500   |
-| `GET`     | `/list-all/`                           | Retrieves and combines JSON file lists for all primary products (reflectivity, hydrometeor, precipitation). | 200 (JSON Body)  | 500             |
-| `GET`     | `/data/<level>/<path:file_key>/<ext>` | Retrieves a specific data file (e.g., `/data/2/..._idx0/png`). `ext` is `png` or `json`.                  | 200 (PNG/JSON)   | 400, 404, 500   |
+| `GET`     | `/list-all/`                           | Retrieves and combines JSON file lists for all primary products (reflectivity, hydrometeor, precipitation).| 200 (JSON Body)  | 500             |
+| `GET`     | `/data/<level>/<path:file_key>/<ext>`  | Retrieves a specific data file (e.g., `/data/2/..._idx0/png`). `ext` is `png` or `json`.                   | 200 (PNG/JSON)   | 400, 404, 500   |
 | `OPTIONS` | `/*`                                   | Handles CORS preflight requests (managed automatically by Flask-CORS).                                     | 200              | -               |
 
 
