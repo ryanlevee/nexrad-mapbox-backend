@@ -41,32 +41,32 @@ The backend utilizes a standard Python `src` layout for organization:
 **Data Processing Flow (Triggered Periodically):**
 
 ```ascii
-+-----------------------------+
++-------------------------------+
 | Public S3 (NOAA L2/Unidata L3)|  Raw Data Source
-+-------------┬---------------+
++-------------┬-----------------+
               │ Finds/Downloads
               │ [nexrad_fetcher service]
               ▼
-+-----------------------------+
-|   scripts/*.py              |  Orchestration (Scheduled)
-| (Downloads to Local Temp)   |
-+-------------┬---------------+
++-------------------------------+
+| scripts/*.py                  |  Orchestration (Scheduled)
+| (Downloads to Local Temp)     |
++-------------┬-----------------+
               │ Processes Files
               │ [processing.L2/L3 modules] using PyArt/Matplotlib
               ▼
-+-----------------------------+
-|   s3_service                |  Uploads Processed Data & Metadata
-|   (Handles S3 Put/Delete)   |  (Also called by metadata_service)
-+-------------┬---------------+
++-------------------------------+
+|  s3_service                   |  Uploads Processed Data & Metadata
+|  (Handles S3 Put/Delete)      |  (Also called by metadata_service)
++-------------┬-----------------+
               │ Stores Processed Files & Updates Metadata Files
               ▼
-+-----------------------------+
-| Project S3 (nexrad-mapbox)  |  Central Storage
-|  - plots_level*/ (PNG/JSON) |
-|  - lists/*.json             |
-|  - codes/options.json       |
-|  - flags/update_flags.json  |
-+-----------------------------+
++-------------------------------+
+| Project S3 (nexrad-mapbox)    |  Central Storage
+|  - plots_level*/ (PNG/JSON)   |
+|  - lists/*.json               |
+|  - codes/options.json         |
+|  - flags/update_flags.json    |
++-------------------------------+
 ```
 
 **API Serving Flow (Handles Frontend Requests):**
@@ -78,12 +78,12 @@ The backend utilizes a standard Python `src` layout for organization:
               │ (via metadata_service & s3_service)
               ▼
 +-----------------------------+
-|   Flask API (server.py)     |  Serves Data via HTTP Endpoints
+| Flask API (server.py)       |  Serves Data via HTTP Endpoints
 +-------------┬---------------+
               │ HTTP Requests / JSON & PNG Responses
               ▼
 +-----------------------------+
-|   Frontend (SolidJS App)    |  Consumes API
+| Frontend (SolidJS App)      |  Consumes API
 +-----------------------------+
 ```
 
