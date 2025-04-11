@@ -225,7 +225,6 @@ These scripts are designed to be run periodically (e.g., every 5-15 minutes) usi
 5.  **AWS S3 Bucket Setup:**
     * Ensure the target S3 bucket (e.g., `nexrad-mapbox`) exists in your specified AWS region.
     * The processing scripts create necessary prefixes (`plots_level2/`, `lists/`, etc.) if they don't exist.
-    * Initial empty JSON files (`codes/options.json`, `flags/update_flags.json`) might be needed in S3 for the scripts/API to read successfully on their very first run, or ensure the `metadata_service` handles their absence gracefully (it currently returns empty dicts).
 
 
 ## Running the Application
