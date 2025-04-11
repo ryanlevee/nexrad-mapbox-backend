@@ -72,8 +72,10 @@ UNSIGNED_BOTO_CONFIG = BotoConfig(
 BOTO3_SESSION = boto3.session.Session()
 
 # --- API Server Settings ---
-API_HOST = os.getenv("API_HOST", "0.0.0.0")
-API_PORT = int(os.getenv("API_PORT", "4000"))
+# API_HOST = os.getenv("API_HOST", "0.0.0.0")
+# API_PORT = int(os.getenv("API_PORT", "4000"))
+API_HOST = os.getenv("0.0.0.0")
+API_PORT = int(os.getenv("4000"))
 # CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*") # Example if you want configurable CORS
 
 

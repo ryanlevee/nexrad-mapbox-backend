@@ -1,5 +1,3 @@
-# src/nexrad_backend/api/app_factory.py
-
 import logging
 from flask import Flask
 from flask_cors import CORS
@@ -18,13 +16,7 @@ def create_app() -> Flask:
     log.info("Flask app created.")
 
     # Configure Cross-Origin Resource Sharing (CORS)
-    CORS(
-        app,
-        origins="*",
-        methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type"],
-        max_age=86400,
-    )
+    CORS(app, origins="*")
     log.info("CORS configured for the app.")
 
     # Import and REGISTER API routes AFTER the app instance is created
