@@ -32,21 +32,34 @@ if __name__ == "__main__":
         host = config.API_HOST
         port = config.API_PORT
 
+        @app.after_request
+        def add_cors_headers(response):
+            response.headers["Access-Control-Max-Age"] = "86400"
+            return response
+
+
+        @app.route("/*", methods=["OPTIONS"])
+        def handle_options():
+            response = app.make_default_options_response()
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            return response
+
         # Define Waitress options (add others as needed)
         # See: https://docs.pylonsproject.org/projects/waitress/en/stable/arguments.html
-        waitress_options = {
-            "backlog": 2048, 
-            "connection_limit": 400, 
-            "threads": 4,  # Example: Number of worker threads (adjust as needed)
-            # 'url_scheme': 'https'   # If behind a reverse proxy handling HTTPS
-        }
+        # waitress_options = {
+        #     "backlog": 2048, 
+        #     "connection_limit": 400, 
+        #     "threads": 4,  # Example: Number of worker threads (adjust as needed)
+        #     # 'url_scheme': 'https'   # If behind a reverse proxy handling HTTPS
+        # }
 
         log.info(f"Starting Waitress server for nexrad-mapbox-backend...")
         log.info(f"Listening on http://{host}:{port}")
-        log.info(f"Waitress options: {waitress_options}")
+        # log.info(f"Waitress options: {waitress_options}")
 
         # Pass options to serve using dictionary unpacking (**)
-        serve(app, host=host, port=port, **waitress_options)
+        serve(app, host=host, port=port) #, **waitress_options)
 
     except NameError as e:
         # Catch potential NameError if imports failed but weren't caught by initial check
