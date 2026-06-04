@@ -22,7 +22,7 @@ except ImportError:
 
 # Local application imports
 from nexrad_backend import config
-from nexrad_backend.services import s3_service
+from nexrad_backend.services import drive_service
 from nexrad_backend.processing import common
 
 log = logging.getLogger(__name__)
@@ -75,31 +75,19 @@ def _calculate_sweep_elevation_index(radar, sweep_num: int) -> int:
     return -1  # Indicate error
 
 
-def _process_l2_sweep_to_s3(
+def _process_l2_sweep(
     radar,
     sweep_num: int,
-    file_key_prefix: str,  # e.g., KPDT20250409_123456_V06
-    product: str,  # e.g., 'reflectivity'
-    s3_project_client,
-    bucket: str,
+    file_key_prefix: str,
+    product: str,
     plot_prefix: str,
 ) -> Optional[Dict[str, Any]]:
     """
     Processes a single Level 2 radar sweep: calculates metadata, plots the image,
-    and uploads both JSON metadata and PNG image to S3.
-
-    Args:
-        radar: The Py-ART Radar object.
-        sweep_num: The sweep number to process.
-        file_key_prefix: Base key for naming output files (derived from input filename).
-        product: The product field name (e.g., 'reflectivity').
-        s3_project_client: Initialized Boto3 S3 client for the project bucket.
-        bucket: Project S3 bucket name.
-        plot_prefix: S3 prefix where plots/JSON should be stored (e.g., 'plots_level2/').
+    and uploads both JSON metadata and PNG image to Google Drive.
 
     Returns:
-        A dictionary with info about the processed sweep {'json_key': ..., 'png_key': ...},
-        or None if processing failed.
+        A dictionary with info about the processed sweep, or None if processing failed.
     """
     log.info(f"Processing sweep {sweep_num} for {file_key_prefix}, product {product}")
 
@@ -134,10 +122,7 @@ def _process_l2_sweep_to_s3(
         json_s3_key = os.path.join(plot_prefix, json_filename).replace("\\", "/")
 
         # 4. Upload JSON Metadata
-        if not s3_service.update_json_in_s3(
-            s3_project_client, bucket, json_s3_key, sweep_metadata
-        ):
-            # Logged error in service, maybe raise specific exception?
+        if not drive_service.update_json(json_s3_key, sweep_metadata):
             raise IOError(f"Failed to upload metadata JSON to {json_s3_key}")
         log.info(f"Uploaded metadata: {json_s3_key}")
 
@@ -176,9 +161,7 @@ def _process_l2_sweep_to_s3(
         png_filename = f"{file_key_prefix}_{product}_idx{sweep_elevation_index}.png"
         png_s3_key = os.path.join(plot_prefix, png_filename).replace("\\", "/")
 
-        if not s3_service.put_s3_object(
-            s3_project_client, bucket, png_s3_key, png_buffer.getvalue(), "image/png"
-        ):
+        if not drive_service.put_object(png_s3_key, png_buffer.getvalue(), "image/png"):
             raise IOError(f"Failed to upload plot PNG to {png_s3_key}")
         log.info(f"Uploaded plot: {png_s3_key}")
 
@@ -206,27 +189,13 @@ def _process_l2_sweep_to_s3(
 
 def process_level2_file(
     local_file_path: str,
-    file_key: str,  # The original S3 key from NOAA (used for naming prefix)
+    file_key: str,
     product: str,
-    s3_project_client,
-    bucket: str = config.PROJECT_S3_BUCKET,
-    plot_prefix: str = config.S3_PREFIX_PLOTS_L2,
+    plot_prefix: str = config.PREFIX_PLOTS_L2,
 ) -> Optional[Dict[str, Any]]:
     """
     Reads a downloaded Level 2 NEXRAD file, processes each sweep (plotting, metadata),
-    uploads results to S3, and cleans up the local file.
-
-    Args:
-        local_file_path: Path to the downloaded NEXRAD Level 2 file.
-        file_key: The original S3 key from the public bucket (e.g., '2025/04/09/KPDT/KPDT20250409_123456_V06').
-        product: The product field name (e.g., 'reflectivity').
-        s3_project_client: Initialized Boto3 S3 client for the project bucket.
-        bucket: Project S3 bucket name.
-        plot_prefix: S3 prefix for storing processed plots and JSON.
-
-    Returns:
-        A dictionary summarizing the processing results for the file, including
-        sweep count and individual sweep results, or None if reading the file failed.
+    uploads results to Google Drive, and cleans up the local file.
     """
     radar = None
     file_key_prefix = file_key.split("/")[-1]  # e.g., KPDT20250409_123456_V06
@@ -244,13 +213,11 @@ def process_level2_file(
         sweep_results = []
         processed_count = 0
         for sweep_num in range(num_sweeps):
-            result = _process_l2_sweep_to_s3(
+            result = _process_l2_sweep(
                 radar,
                 sweep_num,
                 file_key_prefix,
                 product,
-                s3_project_client,
-                bucket,
                 plot_prefix,
             )
             if result:

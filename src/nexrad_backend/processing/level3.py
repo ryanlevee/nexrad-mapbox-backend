@@ -20,7 +20,7 @@ except ImportError:
 
 # Local application imports
 from nexrad_backend import config
-from nexrad_backend.services import s3_service
+from nexrad_backend.services import drive_service
 from nexrad_backend.processing import common
 
 log = logging.getLogger(__name__)
@@ -60,25 +60,14 @@ def _normalize_l3_filename_key(original_filename: str) -> Optional[str]:
 
 def process_level3_file(
     local_file_path: str,
-    original_filename: str,  # Filename as downloaded (e.g., PDT_HHC_...)
-    product_type: str,  # General type (e.g., 'hydrometeor', 'precipitation')
-    field: str,  # Specific Py-ART field name (e.g., 'radar_echo_classification')
-    s3_project_client,
-    bucket: str = config.PROJECT_S3_BUCKET,
-    plot_prefix: str = config.S3_PREFIX_PLOTS_L3,
+    original_filename: str,
+    product_type: str,
+    field: str,
+    plot_prefix: str = config.PREFIX_PLOTS_L3,
 ) -> Optional[str]:
     """
     Reads a downloaded Level 3 NEXRAD file, processes it (plotting, metadata),
-    uploads results to S3, and cleans up the local file.
-
-    Args:
-        local_file_path: Path to the downloaded NEXRAD Level 3 file.
-        original_filename: The filename as downloaded from the public bucket.
-        product_type: General category ('hydrometeor', 'precipitation'). Used for naming output.
-        field: The specific Py-ART field to plot (e.g., 'reflectivity', 'radar_echo_classification').
-        s3_project_client: Initialized Boto3 S3 client for the project bucket.
-        bucket: Project S3 bucket name.
-        plot_prefix: S3 prefix for storing processed plots and JSON.
+    uploads results to Google Drive, and cleans up the local file.
 
     Returns:
         The normalized filename key prefix (e.g., KPDT20250409_153000_HHC) if processing
@@ -138,9 +127,7 @@ def process_level3_file(
         json_s3_key = os.path.join(plot_prefix, json_filename).replace("\\", "/")
 
         # 5. Upload JSON Metadata
-        if not s3_service.update_json_in_s3(
-            s3_project_client, bucket, json_s3_key, metadata
-        ):
+        if not drive_service.update_json(json_s3_key, metadata):
             raise IOError(f"Failed to upload metadata JSON to {json_s3_key}")
         log.info(f"Uploaded metadata: {json_s3_key}")
 
@@ -185,9 +172,7 @@ def process_level3_file(
         png_filename = f"{normalized_key_prefix}_{product_type}_idx{file_index}.png"
         png_s3_key = os.path.join(plot_prefix, png_filename).replace("\\", "/")
 
-        if not s3_service.put_s3_object(
-            s3_project_client, bucket, png_s3_key, png_buffer.getvalue(), "image/png"
-        ):
+        if not drive_service.put_object(png_s3_key, png_buffer.getvalue(), "image/png"):
             raise IOError(f"Failed to upload plot PNG to {png_s3_key}")
         log.info(f"Uploaded plot: {png_s3_key}")
 

@@ -36,12 +36,15 @@ dependencies = [
     "flask-cors",
     "boto3",
     "python-dotenv",
-    "waitress",      # WSGI server used in server.py
-    "pyart-mch",     # Or "pyart" if you used the standard ARM version. pyart-mch often has ARM Radar specific features. Check your install.
+    "waitress",
+    "pyart-mch",
     "matplotlib",
     "numpy",
-    "pytz",          # Used in get_nexrad_data_level3.py
-    # Add any other direct dependencies identified from your imports
+    "pytz",
+    "google-api-python-client",
+    "google-auth",
+    "google-auth-oauthlib",
+    "requests",
 ]
 
 # Optional dependencies - e.g., for development, testing

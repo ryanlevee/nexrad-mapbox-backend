@@ -12,3 +12,5 @@ dist
 node_modules
 public
 script*.py
+*.egg-info/
+temp_nexrad_downloads/
