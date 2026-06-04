@@ -32,8 +32,11 @@ def _get_drive_service():
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            with open(token_path, "w") as f:
-                f.write(creds.to_json())
+            try:
+                with open(token_path, "w") as f:
+                    f.write(creds.to_json())
+            except OSError:
+                pass  # read-only filesystem (e.g. Render secret files)
 
         _drive_service = build("drive", "v3", credentials=creds, cache_discovery=False)
     return _drive_service
