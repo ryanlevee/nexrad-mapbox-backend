@@ -21,7 +21,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")  # Default to us-east-1 if not set
 
 # --- Project S3 Bucket Configuration ---
-PROJECT_S3_BUCKET = os.getenv("PROJECT_S3_BUCKET", "nexrad-mapbox")
+PROJECT_S3_BUCKET = os.getenv("PROJECT_S3_BUCKET", "scratch-rlevee-eng-sandbox")
 
 # Standardized path prefixes within the project bucket
 S3_PREFIX_PLOTS_L2 = "plots_level2/"
