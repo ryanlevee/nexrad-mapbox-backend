@@ -59,7 +59,7 @@ async def main(loop):
     # 1. Load Config & Initialize Clients
     log.info("Loading configuration and initializing clients...")
     try:
-        config._validate_drive_config()
+        config._validate_r2_config()
         site = config.RADAR_SITE_L3
         level = 3
         download_dir = os.path.abspath(config.DOWNLOAD_FOLDER)

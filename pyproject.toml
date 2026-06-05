@@ -41,9 +41,6 @@ dependencies = [
     "matplotlib",
     "numpy",
     "pytz",
-    "google-api-python-client",
-    "google-auth",
-    "google-auth-oauthlib",
     "requests",
 ]
 

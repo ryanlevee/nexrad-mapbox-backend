@@ -15,10 +15,11 @@ load_dotenv(dotenv_path=dotenv_path)
 # load_dotenv()
 
 
-# --- Google Drive Configuration ---
-GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-GOOGLE_OAUTH_TOKEN_PATH = os.getenv("GOOGLE_OAUTH_TOKEN_PATH")
-GOOGLE_OAUTH_CLIENT_SECRET_PATH = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_PATH")
+# --- Cloudflare R2 Configuration ---
+R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+R2_BUCKET = os.getenv("R2_BUCKET", "nexrad-mapbox")
 
 # --- AWS Region (for public bucket access only) ---
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
@@ -75,16 +76,18 @@ API_PORT = int(os.getenv("API_PORT", "4000"))
 
 
 # --- Validation ---
-def _validate_drive_config():
-    """Checks for essential Google Drive configuration."""
+def _validate_r2_config():
+    """Checks for essential R2 configuration."""
     missing = []
-    if not GOOGLE_DRIVE_FOLDER_ID:
-        missing.append("GOOGLE_DRIVE_FOLDER_ID")
-    if not GOOGLE_OAUTH_TOKEN_PATH:
-        missing.append("GOOGLE_OAUTH_TOKEN_PATH")
+    if not R2_ENDPOINT_URL:
+        missing.append("R2_ENDPOINT_URL")
+    if not R2_ACCESS_KEY_ID:
+        missing.append("R2_ACCESS_KEY_ID")
+    if not R2_SECRET_ACCESS_KEY:
+        missing.append("R2_SECRET_ACCESS_KEY")
     if missing:
         raise EnvironmentError(
-            f"Missing Google Drive configuration. Please set in .env: {', '.join(missing)}"
+            f"Missing R2 configuration. Please set in .env: {', '.join(missing)}"
         )
 
 
@@ -104,10 +107,10 @@ import multiprocessing as _mp
 if _mp.current_process().name == "MainProcess":
     print("-" * 30)
     print("Backend Configuration Loaded:")
-    print(f"  Google Drive Folder: {GOOGLE_DRIVE_FOLDER_ID}")
-    print(f"  OAuth Token:         {GOOGLE_OAUTH_TOKEN_PATH}")
-    print(f"  L2 Radar Site:       {RADAR_SITE_L2}")
-    print(f"  L3 Radar Site:       {RADAR_SITE_L3}")
-    print(f"  Processing Window:   {PROCESSING_WINDOW_MINUTES} mins")
-    print(f"  API Host:            {API_HOST}:{API_PORT}")
+    print(f"  R2 Bucket:         {R2_BUCKET}")
+    print(f"  R2 Endpoint:       {R2_ENDPOINT_URL}")
+    print(f"  L2 Radar Site:     {RADAR_SITE_L2}")
+    print(f"  L3 Radar Site:     {RADAR_SITE_L3}")
+    print(f"  Processing Window: {PROCESSING_WINDOW_MINUTES} mins")
+    print(f"  API Host:          {API_HOST}:{API_PORT}")
     print("-" * 30)
